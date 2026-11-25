@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Idris – Benchmark Catch-up Calendar</title>
+<style>
+:root{
+  --bg:#f5f4ef; --card:#ffffff; --ink:#1f2430; --mute:#5f6675; --line:#e3e0d6; --accent:#1d4ed8;
+  --weekday:#ffffff; --weekend:#eef3ff; --holiday:#e8f8ee; --away:#fff3e0; --blocked:#fde6e6; --bench:#ede7ff;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);line-height:1.4;-webkit-text-size-adjust:100%}
+.wrap{max-width:1100px;margin:0 auto;padding:16px 14px 60px}
+h1{font-size:1.45rem;margin:0 0 2px}
+.sub{color:var(--mute);font-size:.92rem;margin:0 0 14px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.stat .n{font-size:1.5rem;font-weight:700;line-height:1.1}
+.stat .l{font-size:.78rem;color:var(--mute)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:14px}
+.strip{display:flex;height:26px;border-radius:6px;overflow:hidden;border:1px solid var(--line)}
+.strip div{flex:1;position:relative;border-right:1px solid rgba(255,255,255,.7)}
+.strip .dot{position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:#1f2430}
+.strip .today{outline:2px solid #1d4ed8;outline-offset:-2px;z-index:1}
+.strip-labels{position:relative;height:18px;font-size:.72rem;color:var(--mute);margin-top:3px}
+.strip-labels span{position:absolute;white-space:nowrap}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.8rem;color:var(--mute);margin-top:8px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.18);vertical-align:-2px;margin-right:5px}
+.tabs{display:flex;gap:6px;margin:0 0 12px;flex-wrap:wrap;align-items:center}
+.tab{border:1px solid var(--line);background:var(--card);padding:8px 14px;border-radius:999px;font:inherit;font-size:.9rem;cursor:pointer;color:var(--ink)}
+.tab[aria-selected=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.spacer{flex:1}
+.btn{border:1px solid var(--line);background:var(--card);padding:7px 12px;border-radius:10px;font:inherit;font-size:.85rem;cursor:pointer;color:var(--ink)}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn.danger{color:#b42318;border-color:#f1c0bb}
+.btn:focus-visible,.tab:focus-visible,.cell:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* month grid */
+.month{margin-bottom:18px}
+.month h2{font-size:1.05rem;margin:0 0 6px}
+.grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.dow{font-size:.72rem;color:var(--mute);text-align:center;padding:2px 0;font-weight:600}
+.cell{min-height:92px;border:1px solid var(--line);border-radius:8px;padding:4px;text-align:left;font:inherit;color:inherit;background:var(--weekday);cursor:pointer;display:flex;flex-direction:column;gap:3px;min-width:0;overflow:hidden}
+.cell.out{background:transparent;border-style:dashed;cursor:default;opacity:.6}
+.cell.pad{border:none;background:transparent;cursor:default}
+.cell.weekend{background:var(--weekend)} .cell.holiday{background:var(--holiday)}
+.cell.away{background:repeating-linear-gradient(135deg,var(--away),var(--away) 6px,#ffe9c7 6px,#ffe9c7 12px)}
+.cell.blocked{background:repeating-linear-gradient(135deg,var(--blocked),var(--blocked) 6px,#fbd3d3 6px,#fbd3d3 12px)}
+.cell.bench{background:var(--bench);opacity:1}
+.cell.today{box-shadow:0 0 0 2px var(--accent)}
+.cell .top{display:flex;justify-content:space-between;align-items:baseline;gap:4px}
+.cell .num{font-weight:700;font-size:.9rem}
+.tag{font-size:.64rem;color:var(--mute);text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip{display:block;font-size:.7rem;line-height:1.25;padding:2px 4px;border-radius:5px;border-left:3px solid var(--c);background:color-mix(in srgb,var(--c) 13%,#fff);color:#1f2430;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip.done{opacity:.55;text-decoration:line-through}
+.chip.tutor{background:color-mix(in srgb,var(--c) 26%,#fff);font-weight:600}
+
+/* agenda */
+.week{margin-bottom:16px}
+.week h3{font-size:.95rem;margin:0 0 6px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.week h3 small{color:var(--mute);font-weight:400;font-size:.8rem}
+.day{display:grid;grid-template-columns:104px 1fr;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:6px;border-left-width:5px}
+.day.weekday{border-left-color:#cbd5e1} .day.weekend{border-left-color:#93b4ff} .day.holiday{border-left-color:#4ade80} .day.away{border-left-color:#fb923c} .day.blocked{border-left-color:#f87171}
+.day .d{font-weight:700;font-size:.92rem}
+.day .t{font-size:.72rem;color:var(--mute);text-transform:uppercase;letter-spacing:.03em}
+.blk{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px dashed var(--line);flex-wrap:wrap}
+.blk:last-of-type{border-bottom:none}
+.blk input[type=checkbox]{width:18px;height:18px;flex:none}
+.blk .time{font-variant-numeric:tabular-nums;font-size:.85rem;min-width:92px}
+.pill{font-size:.8rem;padding:2px 9px;border-radius:999px;color:#fff;background:var(--c);white-space:nowrap}
+.kind{font-size:.78rem;color:var(--mute)}
+.note{font-size:.82rem;color:var(--mute);flex:1;min-width:80px}
+.warn{font-size:.75rem;color:#b45309}
+.x{border:none;background:none;color:#9ca3af;font-size:1.1rem;cursor:pointer;padding:2px 6px;border-radius:6px}
+.x:hover{color:#b42318;background:#fee}
+.free{color:var(--mute);font-size:.85rem}
+
+/* subjects */
+.subj{display:grid;grid-template-columns:110px 1fr 120px;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line)}
+.subj:last-child{border-bottom:none}
+.bar{height:14px;background:#eef0f3;border-radius:7px;overflow:hidden;display:flex}
+.bar .a{background:var(--c)} .bar .b{background:color-mix(in srgb,var(--c) 45%,#fff)}
+.subj .nums{font-size:.8rem;color:var(--mute);text-align:right}
+.zero{color:#b45309;font-weight:600}
+table.cap{border-collapse:collapse;width:100%;font-size:.88rem}
+table.cap td,table.cap th{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left}
+table.cap th{font-size:.75rem;color:var(--mute);font-weight:600;text-transform:uppercase}
+ul.tips{margin:6px 0 0;padding-left:18px;font-size:.88rem}
+ul.tips li{margin:3px 0}
+.hint{font-size:.8rem;color:var(--mute)}
+
+/* panel */
+#ov{position:fixed;inset:0;background:rgba(20,24,35,.45);display:none;align-items:flex-end;justify-content:center;z-index:20}
+#ov.open{display:flex}
+.panel{background:#fff;width:100%;max-width:560px;max-height:92vh;overflow:auto;border-radius:16px 16px 0 0;padding:16px}
+@media(min-width:700px){#ov{align-items:center}.panel{border-radius:16px}}
+.panel h2{margin:0;font-size:1.15rem}
+.panel .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.panel label{font-size:.78rem;color:var(--mute);display:flex;flex-direction:column;gap:3px;flex:1;min-width:110px}
+.panel input,.panel select{font:inherit;font-size:.92rem;padding:8px;border:1px solid #cfd3da;border-radius:8px;background:#fff;color:var(--ink);width:100%}
+.panel .head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+
+@media(max-width:720px){
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .cell{min-height:70px;padding:3px}
+  .chip{font-size:.62rem;padding:1px 3px}
+  .chip .tm{display:none}
+  .tag{display:none}
+  .day{grid-template-columns:78px 1fr}
+  .subj{grid-template-columns:90px 1fr}
+  .subj .nums{grid-column:1 / -1;text-align:left}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Idris – Benchmark catch-up calendar</h1>
+  <p class="sub">Fri 20 Nov 2026 → Fri 5 Feb 2027 · Benchmarks Mon 8 – Fri 12 Feb · Half-term 15 – 19 Feb</p>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="card">
+    <div class="strip" id="strip" aria-label="Timeline of the whole plan"></div>
+    <div class="strip-labels" id="stripLabels"></div>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" data-v="cal">Calendar</button>
+    <button class="tab" role="tab" data-v="agenda">Week by week</button>
+    <button class="tab" role="tab" data-v="subj">Subjects &amp; time</button>
+    <span class="spacer"></span>
+    <button class="btn" id="csvBtn" hidden>Export CSV</button>
+  </div>
+
+  <div id="main"></div>
+</div>
+
+<div id="ov" role="dialog" aria-modal="true" aria-label="Day details"><div class="panel" id="panel"></div></div>
+
+<script>
+"use strict";
+/* ---------- config ---------- */
+const START='2026-11-20', END='2027-02-05';
+const SUBJECTS=[
+  {id:'Business',c:'#a16207'},{id:'PE',c:'#0e7490'},{id:'Maths',c:'#2563eb'},{id:'English',c:'#9333ea'},
+  {id:'Physics',c:'#dc2626'},{id:'Biology',c:'#15803d'},{id:'Chemistry',c:'#ea580c'},{id:'Geography',c:'#be185d'}
+];
+const COL=Object.fromEntries(SUBJECTS.map(s=>[s.id,s.c]));
+const KINDS=['Revision','Past paper','Recall quiz','Catch-up on class notes','Other'];
+const KEY='idris-benchmark-plan-v1';
+/* Extra study blocks added by Claude go here (kept separate from the viewer's own edits). */
+const BASE_EXTRA=[];
+
+/* ---------- date helpers ---------- */
+const pad=n=>String(n).padStart(2,'0');
+const iso=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const parse=s=>{const a=s.split('-').map(Number);return new Date(a[0],a[1]-1,a[2])};
+const addDays=(s,n)=>{const d=parse(s);d.setDate(d.getDate()+n);return iso(d)};
+const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const fmtDay=s=>{const d=parse(s);return DOW[d.getDay()]+' '+d.getDate()+' '+MON[d.getMonth()]};
+const toMin=t=>{const a=t.split(':');return +a[0]*60+ +a[1]};
+const fromMin=m=>pad(Math.floor(m/60))+':'+pad(m%60);
+const fmtH=m=>{const h=m/60;return (Math.round(h*10)/10).toString()+'h'};
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const DAYS=[];for(let d=START;d<=END;d=addDays(d,1))DAYS.push(d);
+const TODAY=iso(new Date());
+
+/* ---------- day types ---------- */
+function dayType(d){
+  if(d>='2026-12-13'&&d<='2026-12-21')return 'away';
+  if(d==='2026-12-24'||d==='2026-12-25'||d==='2026-12-26')return 'blocked';
+  const dow=parse(d).getDay();
+  if(d>='2026-12-22'&&d<='2027-01-10')return 'holiday';
+  return (dow===0||dow===6)?'weekend':'weekday';
+}
+const TYPE_LABEL={weekday:'School day',weekend:'Weekend',holiday:'Holiday – free',away:'Away on holiday',blocked:'Not available'};
+const TYPE_COLOR={weekday:'#ffffff',weekend:'#c9d9ff',holiday:'#b7efc9',away:'#ffd6a0',blocked:'#f7b4b4'};
+function phase(d){
+  if(d<'2026-12-13')return 'Catch-up (term)';
+  if(d<='2026-12-21')return 'Away on holiday';
+  if(d<='2026-12-23')return 'Back – restart gently';
+  if(d<='2026-12-26')return 'Christmas break';
+  if(d<='2027-01-10')return 'Holiday study push';
+  if(d<'2027-02-01')return 'Term – consolidate';
+  return 'Final run-in';
+}
+function outLabel(d){
+  if(d>='2027-02-08'&&d<='2027-02-12')return 'Benchmarks';
+  if(d>='2027-02-15'&&d<='2027-02-19')return 'Half-term';
+  return '';
+}
+
+/* ---------- tutoring (fixed weekly) ---------- */
+function tutorBlocks(){
+  const slots=[];
+  DAYS.forEach(d=>{
+    const t=dayType(d);if(t==='away'||t==='blocked')return;
+    const dow=parse(d).getDay();
+    if(dow===4)slots.push({date:d,start:'18:50',end:'19:50',note:''});
+    if(dow===6)slots.push({date:d,start:'09:00',end:'10:00',note:''});
+  });
+  slots.push({date:'2026-12-22',start:'09:00',end:'10:00',note:'moved from Sat 26 Dec'});
+  slots.push({date:'2026-12-28',start:'18:50',end:'19:50',note:'extra session'});
+  slots.sort((x,y)=>x.date.localeCompare(y.date));
+  /* From Thu 26 Nov lessons run in same-subject pairs, alternating Chemistry / Physics. */
+  const out=[];let i=0;
+  slots.forEach(sl=>{
+    if(sl.date<'2026-11-26'){out.push(mkTutor(sl,'Physics',true));return}
+    const subj=(Math.floor(i/2)%2===0)?'Chemistry':'Physics';i++;
+    out.push(mkTutor(sl,subj,false));
+  });
+  return out;
+}
+function mkTutor(sl,subj,held){
+  return {id:'t-'+sl.date,date:sl.date,start:sl.start,end:sl.end,subject:subj,kind:'Tutoring',
+    note:subj+' tutor'+(sl.note?' ('+sl.note+')':''),tutor:true,paid:sl.date<='2026-11-26',done0:held};
+}
+const isDone=b=>(b.id in S.done)?!!S.done[b.id]:!!b.done0;
+const payTag=b=>b.tutor?(b.paid?'<span class="kind">✓ paid</span>':'<span class="kind" style="color:#b45309">to pay</span>'):'';
+
+/* ---------- state (this viewer's own changes only) ---------- */
+let S={added:[],removed:[],done:{}};
+try{const r=localStorage.getItem(KEY);if(r){const p=JSON.parse(r);S={added:p.added||[],removed:p.removed||[],done:p.done||{}};}}catch(e){}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function blocks(){
+  return tutorBlocks().concat(BASE_EXTRA,S.added).filter(b=>S.removed.indexOf(b.id)<0)
+    .sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
+}
+const dur=b=>toMin(b.end)-toMin(b.start);
+function byDate(bl){const m={};bl.forEach(b=>{(m[b.date]=m[b.date]||[]).push(b)});return m}
+function overlaps(b,list){return list.some(o=>o.id!==b.id&&toMin(o.start)<toMin(b.end)&&toMin(b.start)<toMin(o.end))}
+
+/* ---------- state: UI ---------- */
+let view=window.innerWidth>720?'cal':'agenda';
+let openDay=null;
+let resetArmed=false;
+
+/* ---------- render ---------- */
+function chip(b){
+  return '<span class="chip'+(b.tutor?' tutor':'')+(isDone(b)?' done':'')+'" style="--c:'+COL[b.subject]+'"><span class="tm">'+b.start+' </span>'+esc(b.subject)+(b.tutor?' (tutor)':'')+'</span>';
+}
+function renderStats(bl){
+  const tutAll=bl.filter(b=>b.tutor||b.kind==='Tutoring');const tut=tutAll.length;const toPay=tutAll.filter(b=>!b.paid).length;
+  const study=bl.length-tut;
+  const mins=bl.reduce((a,b)=>a+dur(b),0);
+  const bench=Math.max(0,Math.ceil((parse('2027-02-08')-parse(TODAY))/86400000));
+  document.getElementById('stats').innerHTML=
+   '<div class="stat"><div class="n">'+bench+'</div><div class="l">days until Benchmarks (8 Feb)</div></div>'+
+   '<div class="stat"><div class="n">'+toPay+'</div><div class="l">lessons still to pay for (from Sat 28 Nov)</div></div>'+
+   '<div class="stat"><div class="n">'+study+'</div><div class="l">extra study blocks added</div></div>'+
+   '<div class="stat"><div class="n">'+fmtH(mins)+'</div><div class="l">total planned time</div></div>';
+}
+function renderStrip(bl){
+  const bd=byDate(bl);
+  document.getElementById('strip').innerHTML=DAYS.map(d=>{
+    const t=dayType(d);
+    const has=(bd[d]||[]).some(b=>b.tutor);
+    return '<div title="'+esc(fmtDay(d)+' – '+TYPE_LABEL[t])+'" class="'+(d===TODAY?'today':'')+'" style="background:'+TYPE_COLOR[t]+'">'+(has?'<span class="dot"></span>':'')+'</div>';
+  }).join('');
+  const lab=[['2026-11-20','20 Nov'],['2026-12-13','13 Dec'],['2026-12-22','22 Dec'],['2027-01-10','10 Jan'],['2027-02-05','5 Feb']];
+  document.getElementById('stripLabels').innerHTML=lab.map(l=>{
+    const i=DAYS.indexOf(l[0]);const p=(i+0.5)/DAYS.length*100;
+    const style=l[0]===END?'right:0':(i===0?'left:0':'left:'+p+'%;transform:translateX(-50%)');
+    return '<span style="'+style+'">'+l[1]+'</span>';
+  }).join('');
+  document.getElementById('legend').innerHTML=
+    ['weekday','weekend','holiday','away','blocked'].map(k=>'<span><i style="background:'+TYPE_COLOR[k]+'"></i>'+TYPE_LABEL[k]+'</span>').join('')+
+    '<span><i style="background:#1f2430;border-radius:50%"></i>Tutor session</span>';
+}
+function renderCal(bl){
+  const bd=byDate(bl);
+  const months=[[2026,10],[2026,11],[2027,0],[2027,1]];
+  let h='';
+  months.forEach(m=>{
+    const first=new Date(m[0],m[1],1);
+    const n=new Date(m[0],m[1]+1,0).getDate();
+    const off=(first.getDay()+6)%7;
+    h+='<div class="month"><h2>'+['January','February','March','April','May','June','July','August','September','October','November','December'][m[1]]+' '+m[0]+'</h2><div class="grid">';
+    ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(x=>h+='<div class="dow">'+x+'</div>');
+    for(let i=0;i<off;i++)h+='<div class="cell pad"></div>';
+    for(let day=1;day<=n;day++){
+      const d=m[0]+'-'+pad(m[1]+1)+'-'+pad(day);
+      const inr=d>=START&&d<=END;
+      if(!inr){
+        const ol=outLabel(d);
+        h+='<div class="cell out'+(ol==='Benchmarks'?' bench':'')+'"><div class="top"><span class="num">'+day+'</span></div>'+(ol?'<span class="tag" style="display:block;color:#4c3a9a">'+ol+'</span>':'')+'</div>';
+        continue;
+      }
+      const t=dayType(d);
+      h+='<button class="cell '+t+(d===TODAY?' today':'')+'" data-day="'+d+'" aria-label="'+esc(fmtDay(d)+', '+TYPE_LABEL[t])+'"><div class="top"><span class="num">'+day+'</span><span class="tag">'+(t==='weekday'||t==='weekend'?'':TYPE_LABEL[t])+'</span></div>'+
+        (bd[d]||[]).map(chip).join('')+'</button>';
+    }
+    h+='</div></div>';
+  });
+  return h;
+}
+function renderAgenda(bl){
+  const bd=byDate(bl);
+  let h='';
+  for(let ws='2026-11-16';ws<=END;ws=addDays(ws,7)){
+    const days=[];for(let i=0;i<7;i++){const d=addDays(ws,i);if(d>=START&&d<=END)days.push(d)}
+    if(!days.length)continue;
+    const ph=[];days.forEach(d=>{const p=phase(d);if(ph.indexOf(p)<0)ph.push(p)});
+    h+='<div class="week"><h3>'+esc(fmtDay(days[0]))+' – '+esc(fmtDay(days[days.length-1]))+'<small>'+esc(ph.join(' → '))+'</small></h3>';
+    days.forEach(d=>{
+      const t=dayType(d);const list=bd[d]||[];
+      h+='<div class="day '+t+'"><div><div class="d">'+esc(fmtDay(d))+(d===TODAY?' ·today':'')+'</div><div class="t">'+TYPE_LABEL[t]+'</div></div><div>';
+      if(!list.length)h+='<div class="free">'+(t==='away'||t==='blocked'?'No study planned':'Free')+'</div>';
+      list.forEach(b=>{
+        h+='<div class="blk"><input type="checkbox" data-done="'+b.id+'" '+(isDone(b)?'checked':'')+' aria-label="Mark done"><span class="time">'+b.start+'–'+b.end+'</span><span class="pill" style="--c:'+COL[b.subject]+'">'+esc(b.subject)+'</span><span class="kind">'+esc(b.kind)+'</span><span class="note">'+esc(b.tutor?'':b.note)+'</span>'+payTag(b)+(overlaps(b,list)?'<span class="warn">⚠ overlaps</span>':'')+'<button class="x" data-del="'+b.id+'" aria-label="Remove block" title="Remove">✕</button></div>';
+      });
+      h+='<button class="btn" style="margin-top:6px" data-day="'+d+'">+ Add block</button></div></div>';
+    });
+    h+='</div>';
+  }
+  return h;
+}
+function renderSubj(bl){
+  const stats=SUBJECTS.map(s=>{
+    let tut=0,self=0,done=0,n=0;
+    bl.filter(b=>b.subject===s.id).forEach(b=>{const m=dur(b);n++;if(b.tutor||b.kind==='Tutoring')tut+=m;else self+=m;if(isDone(b))done+=m;});
+    return {s:s,tut:tut,self:self,done:done,n:n};
+  });
+  const max=Math.max(60,...stats.map(x=>x.tut+x.self));
+  let h='<div class="card"><h2 style="margin:0 0 4px;font-size:1.05rem">Time planned per subject</h2><div class="hint" style="margin-bottom:6px">Dark = tutor time, light = self-study. Subjects with nothing yet are flagged so we can place blocks for them next.</div>';
+  stats.forEach(x=>{
+    const tot=x.tut+x.self;
+    h+='<div class="subj" style="--c:'+x.s.c+'"><div><span class="pill" style="--c:'+x.s.c+'">'+x.s.id+'</span></div><div class="bar" aria-hidden="true"><div class="a" style="width:'+(x.tut/max*100)+'%"></div><div class="b" style="width:'+(x.self/max*100)+'%"></div></div><div class="nums">'+(tot?fmtH(tot)+' · '+x.n+' block'+(x.n>1?'s':'')+(x.done?' · '+fmtH(x.done)+' done':''):'<span class="zero">Nothing planned yet</span>')+'</div></div>';
+  });
+  h+='</div>';
+
+  const cnt={weekday:0,weekend:0,holiday:0,away:0,blocked:0};
+  DAYS.forEach(d=>cnt[dayType(d)]++);
+  h+='<div class="card"><h2 style="margin:0 0 6px;font-size:1.05rem">Where the time is</h2><table class="cap"><tr><th>Type of day</th><th>Days</th><th>Realistic use (suggested)</th></tr>'+
+   '<tr><td>School days</td><td>'+cnt.weekday+'</td><td>One short block after school (30–45 min)</td></tr>'+
+   '<tr><td>Weekends</td><td>'+cnt.weekend+'</td><td>Two blocks (morning + afternoon), tutor on Saturday 9am</td></tr>'+
+   '<tr><td>Holiday – free</td><td>'+cnt.holiday+'</td><td>Two to three blocks a day, mornings first</td></tr>'+
+   '<tr><td>Away on holiday</td><td>'+cnt.away+'</td><td>None planned (13–21 Dec)</td></tr>'+
+   '<tr><td>Not available</td><td>'+cnt.blocked+'</td><td>None (24–26 Dec)</td></tr></table>'+
+   '<ul class="tips"><li>Lessons run in same-subject pairs (Thursday 18:50 + Saturday 09:00), alternating Chemistry and Physics: Chemistry on Thu 26 and Sat 28 Nov, then Physics, and so on. Over Christmas, Tue 22 Dec (moved from Sat 26 Dec) and Mon 28 Dec (extra) are both Physics, then Chemistry on Thu 31 Dec and Sat 2 Jan. The 22 Dec and 28 Dec times are assumptions.</li>'+
+   '<li>Sat 6 Feb (the day before Benchmarks week) sits just outside this calendar. If that lesson runs it would be one more Physics lesson, pairing with Thu 4 Feb; it isn&#39;t counted here.</li></ul></div>';
+  return h;
+}
+function render(){
+  const bl=blocks();
+  renderStats(bl);renderStrip(bl);
+  document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',t.dataset.v===view?'true':'false'));
+  const m=document.getElementById('main');
+  m.innerHTML=view==='cal'?renderCal(bl):view==='agenda'?renderAgenda(bl):renderSubj(bl)+
+    '<div class="card"><div class="hint">Ticks and any blocks you add or remove are saved in this browser only.</div><div style="margin-top:8px"><button class="btn danger" id="reset">'+(resetArmed?'Click again to confirm reset':'Reset my changes')+'</button></div></div>';
+  if(openDay)renderPanel();
+}
+
+/* ---------- day panel ---------- */
+function renderPanel(){
+  const d=openDay;const t=dayType(d);
+  const list=blocks().filter(b=>b.date===d);
+  let h='<div class="head"><div><h2>'+esc(fmtDay(d))+'</h2><div class="hint">'+TYPE_LABEL[t]+' · '+esc(phase(d))+'</div></div><button class="btn" id="closeP">Close</button></div>';
+  if(t==='away'||t==='blocked')h+='<p class="warn" style="margin:10px 0 0">'+(t==='away'?'Idris is away on holiday this day.':'Not available this day.')+' You can still add a block if plans change.</p>';
+  h+='<div style="margin-top:8px">';
+  if(!list.length)h+='<div class="free">Nothing planned.</div>';
+  list.forEach(b=>{
+    h+='<div class="blk"><input type="checkbox" data-done="'+b.id+'" '+(isDone(b)?'checked':'')+' aria-label="Mark done"><span class="time">'+b.start+'–'+b.end+'</span><span class="pill" style="--c:'+COL[b.subject]+'">'+esc(b.subject)+'</span><span class="kind">'+esc(b.kind)+'</span><span class="note">'+esc(b.tutor?'':b.note)+'</span>'+payTag(b)+(overlaps(b,list)?'<span class="warn">⚠ overlaps</span>':'')+'<button class="x" data-del="'+b.id+'" aria-label="Remove block">✕</button></div>';
+  });
+  h+='</div><hr style="border:none;border-top:1px solid var(--line);margin:14px 0 4px"><strong style="font-size:.95rem">Add a study block</strong>'+
+   '<div class="row"><label>Subject<select id="fSub">'+SUBJECTS.map(s=>'<option>'+s.id+'</option>').join('')+'</select></label>'+
+   '<label>Type<select id="fKind">'+KINDS.map(k=>'<option>'+k+'</option>').join('')+'</select></label></div>'+
+   '<div class="row"><label>Start<input id="fStart" type="time" value="'+(parse(d).getDay()%6===0||t==='holiday'?'10:00':'17:30')+'"></label>'+
+   '<label>Length<select id="fDur"><option value="30">30 min</option><option value="45">45 min</option><option value="60" selected>1 hour</option><option value="90">1.5 hours</option><option value="120">2 hours</option></select></label></div>'+
+   '<div class="row"><label style="flex:2">Note (topic, paper, etc.)<input id="fNote" type="text" maxlength="80" placeholder="e.g. Forces and motion"></label>'+
+   '<label>Repeat weekly until<input id="fUntil" type="date" min="'+d+'" max="'+END+'"></label></div>'+
+   '<div class="row" style="justify-content:flex-end"><button class="btn primary" id="fAdd">Add block</button></div>';
+  document.getElementById('panel').innerHTML=h;
+  document.getElementById('ov').classList.add('open');
+}
+function closePanel(){openDay=null;document.getElementById('ov').classList.remove('open')}
+function addBlock(){
+  const d=openDay;
+  const sub=document.getElementById('fSub').value,kind=document.getElementById('fKind').value;
+  const st=document.getElementById('fStart').value||'17:30';
+  const du=+document.getElementById('fDur').value;
+  const note=document.getElementById('fNote').value.trim();
+  const until=document.getElementById('fUntil').value;
+  const dates=[d];
+  if(until){for(let x=addDays(d,7);x<=until&&x<=END;x=addDays(x,7)){const t=dayType(x);if(t!=='away'&&t!=='blocked')dates.push(x)}}
+  const end=fromMin(Math.min(toMin(st)+du,23*60+59));
+  dates.forEach(dt=>{S.added.push({id:'u-'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),date:dt,start:st,end:end,subject:sub,kind:kind,note:note})});
+  save();render();
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click',e=>{
+  const t=e.target;
+  const tab=t.closest('.tab');if(tab){view=tab.dataset.v;resetArmed=false;render();return}
+  if(t.id==='ov'||t.id==='closeP'){closePanel();return}
+  if(t.id==='fAdd'){addBlock();return}
+  const del=t.closest('[data-del]');
+  if(del){const id=del.dataset.del;const ai=S.added.findIndex(b=>b.id===id);if(ai>=0)S.added.splice(ai,1);else if(S.removed.indexOf(id)<0)S.removed.push(id);delete S.done[id];save();render();return}
+  if(t.id==='reset'){if(!resetArmed){resetArmed=true;render();return}S={added:[],removed:[],done:{}};resetArmed=false;save();closePanel();render();return}
+  const dc=t.closest('[data-day]');
+  if(dc){openDay=dc.dataset.day;renderPanel();return}
+});
+document.addEventListener('change',e=>{
+  const t=e.target;
+  if(t.dataset&&t.dataset.done){S.done[t.dataset.done]=t.checked?1:0;save();render()}
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closePanel()});
+
+/* ---------- CSV export (opens in Google Calendar / Excel) ---------- */
+(async()=>{
+  try{
+    if(!(window.claude&&window.claude.use))return;
+    const dl=await window.claude.use('downloads');
+    if(!dl)return;
+    const btn=document.getElementById('csvBtn');btn.hidden=false;
+    btn.addEventListener('click',async()=>{
+      const q=v=>'"'+String(v).replace(/"/g,'""')+'"';
+      const fd=s=>{const a=s.split('-');return a[1]+'/'+a[2]+'/'+a[0]};
+      const rows=[['Subject','Start Date','Start Time','End Date','End Time','Description'].join(',')];
+      blocks().forEach(b=>rows.push([q(b.subject+' – '+b.kind),fd(b.date),b.start,fd(b.date),b.end,q(b.note||'')].join(',')));
+      try{await dl.save({filename:'idris-revision-plan.csv',data:rows.join('\r\n')})}catch(err){}
+    });
+  }catch(e){}
+})();
+
+render();
+</script>
+</body>
+</html>
